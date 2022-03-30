@@ -22,10 +22,9 @@ let spawnMultiples name dict bot =
 let main argv =
     ScrabbleUtil.DebugPrint.toggleDebugPrint true // Change to false to supress debug output
 
-    System.Console.BackgroundColor <- System.ConsoleColor.White
-    System.Console.ForegroundColor <- System.ConsoleColor.Black
+    // System.Console.BackgroundColor <- System.ConsoleColor.White
+    System.Console.ForegroundColor <- System.ConsoleColor.White
     System.Console.Clear()
-
 
     let board        = ScrabbleUtil.StandardBoard.standardBoard ()
 //    let board      = ScrabbleUtil.InfiniteBoard.infiniteBoard ()
@@ -38,7 +37,7 @@ let main argv =
 //    let board      = ScrabbleUtil.HoleBoard.holeBoard ()
 //    let board      = ScrabbleUtil.InfiniteHoleBoard.infiniteHoleBoard ()
 
-    let words     = readLines "../../../Dictionaries/English.txt"
+    let words     = readLines "./Dictionaries/English.txt"
 
     let handSize   = 7u
     let timeout    = None
