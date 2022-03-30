@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/jesper-bengtson/Scrabble-FP2022/</RepositoryUrl>
+    <TargetFramework>net6.0</TargetFramework>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Company>IT University of Copenhagen</Company>
+    
+    <Version>1.0.0</Version>
+    <PackageId>YourIdGoesHere</PackageId>
+    <AssemblyName>YourIdGoesHere</AssemblyName>
+    <Authors>Your names go here (optional since this is hosted in a public Github repository)</Authors>
+    <Product>The bot name goes here</Product>
+    <Description>Scrabble Bot for Functional Programming 2022
+
+Group name: &lt;Your group name goes here&gt; (optional since this is hosted in a public Github repository)</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="MultiSet.fsi" />
+    <Compile Include="MultiSet.fs" />
+    <Compile Include="FParsecLight.fsi" />
+    <Compile Include="FParsecLight.fs" />
+    <Compile Include="StateMonad.fsi" />
+    <Compile Include="StateMonad.fs" />
+    <Compile Include="Eval.fs" />
+    <Compile Include="Parser.fsi" />
+    <Compile Include="Parser.fs" />
+    <Compile Include="Scrabble.fsi" />
+    <Compile Include="Scrabble.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FParsec" Version="1.1.1" />
+    <PackageReference Include="ScrabbleUtil" Version="1.0.12" />
+    <PackageReference Update="FSharp.Core" Version="6.0.3" />
+  </ItemGroup>
+
+</Project>

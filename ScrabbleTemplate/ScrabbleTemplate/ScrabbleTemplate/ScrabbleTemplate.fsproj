@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+
+    <Content Include="Dictionaries\English.txt" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Oxyphenbutazone" Version="1.0.11" />
+    <PackageReference Include="ScrabbleServer" Version="1.0.19" />
+    <PackageReference Update="FSharp.Core" Version="6.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ScrabbleBot\ScrabbleBot.fsproj" />
+  </ItemGroup>
+
+</Project>
