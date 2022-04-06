@@ -21,8 +21,8 @@
         let (<|>)  (p : Parser<'a>) q : Parser<'a> = attempt p <|> q 
         let choice (ps : Parser<'a> seq) : Parser<'a> = choice (Seq.map attempt ps) 
 
-        let many  (p : Parser<'a>) : Parser<'a list> = many (attempt p)     
-        let many1 (p : Parser<'a>) : Parser<'a list> = many1 (attempt p)
+        let many  (p : Parser<'a>) : Parser<'a list> = many p
+        let many1 (p : Parser<'a>) : Parser<'a list> = many1 p
 
         let opt     (p : Parser<'a>) : Parser<'a option> = opt p
         let between l r (p : Parser<'c>) : Parser<'c> = between l r p

@@ -1,6 +1,6 @@
 ﻿// Learn more about F# at http://fsharp.org
 
-open System
+open Dictionary
 
 let time f =
     let start = System.DateTime.Now
@@ -22,8 +22,8 @@ let spawnMultiples name dict bot =
 let main argv =
     ScrabbleUtil.DebugPrint.toggleDebugPrint true // Change to false to supress debug output
 
-    // System.Console.BackgroundColor <- System.ConsoleColor.White
-    System.Console.ForegroundColor <- System.ConsoleColor.White
+    System.Console.BackgroundColor <- System.ConsoleColor.White
+    System.Console.ForegroundColor <- System.ConsoleColor.Black
     System.Console.Clear()
 
     let board        = ScrabbleUtil.StandardBoard.standardBoard ()
@@ -47,11 +47,11 @@ let main argv =
 
     let dictAPI =
         // Uncomment if you have implemented a dictionary. last element None if you have not implemented a GADDAG
-        // Some (Dictionary.empty, Dictionary.insert, Dictionary.step, Some Dictionary.reverse) 
-        None
+        Some (Dictionary.empty, Dictionary.insert, Dictionary.step, None) 
+
+
 
     let (dictionary, time) = time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
-
     // Uncomment to test your dictionary
     // ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test sucessful\n")
     // let incorrectWords = ScrabbleUtil.Dictionary.test words 10 (dictionary false) // change to true if using a GADDAG
@@ -62,9 +62,7 @@ let main argv =
     //    List.iter (fun str -> ScrabbleUtil.DebugPrint.debugPrint (sprintf "%s\n" str)) incorrectWords
         
     // Uncomment this line to call your client
-    // let players    = [("Your name here", dictionary, YourClientName.Scrabble.startGame)]
-    let players = spawnMultiples "OxyphenButazone" dictionary Oxyphenbutazone.Scrabble.startGame 2
-        
+    let players    = [("Low Orbit Scrabble Cannon", dictionary, LowOrbitScrabbleCannon.Scrabble.startGame);("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)]        
 
     do ScrabbleServer.Comm.startGame 
           board dictionary handSize timeout tiles seed port players

@@ -1,6 +1,5 @@
 ﻿// Insert your StateMonad.fs from Assignment 6 here. All modules must be internal.
 
-
 module internal StateMonad
 
     type Error = 
@@ -45,17 +44,6 @@ module internal StateMonad
     let (>>=)  x f = bind f x
     let (>>>=) x f = x >>= (fun () -> f)
 
-    let push : SM<unit> = 
-        S (fun s -> Success ((), {s with vars = Map.empty :: s.vars}))
-
-    let pop : SM<unit> = failwith "Not implemented"      
-
-    let wordLength : SM<int> = failwith "Not implemented"      
-
-    let characterValue (pos : int) : SM<char> = failwith "Not implemented"      
-
-    let pointValue (pos : int) : SM<int> = failwith "Not implemented"      
-
     let lookup (x : string) : SM<int> = 
         let rec aux =
             function
@@ -69,6 +57,27 @@ module internal StateMonad
               match aux (s.vars) with
               | Some v -> Success (v, s)
               | None   -> Failure (VarNotFound x))
+
+    let push : SM<unit> = 
+        S (fun s -> Success ((), {s with vars = Map.empty :: s.vars}))
+
+    // Exercise 6.1
+    let pop : SM<unit> = 
+        S (fun s -> Success ((), {s with vars = s.vars.Tail}))
+
+    // Exercise 6.2
+    let wordLength : SM<int> = 
+        S (fun s -> Success (s.word.Length, s))  
+
+    let characterValue (pos : int) : SM<char> =
+        S (fun s -> if pos >= s.word.Length || pos < 0
+                    then Failure (IndexOutOfBounds pos) 
+                    else Success ((fst s.word.[pos]), s)) 
+
+    let pointValue (pos : int) : SM<int> =
+        S (fun s -> if pos >= s.word.Length || pos < 0 
+                    then Failure (IndexOutOfBounds pos) 
+                    else Success ((snd s.word.[pos]) , s))      
 
     let declare (var : string) : SM<unit> = failwith "Not implemented"   
     let update (var : string) (value : int) : SM<unit> = failwith "Not implemented"      
