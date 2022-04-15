@@ -30,7 +30,7 @@ let main argv =
 //    let board      = ScrabbleUtil.InfiniteBoard.infiniteBoard ()
 
 //    let board      = ScrabbleUtil.RandomBoard.randomBoard ()
-//    let board      = ScrabbleUtil.RandomBoard.randomBoardSeed (Some 42)
+    // let board      = ScrabbleUtil.RandomBoard.randomBoardSeed (Some 42069)
 //    let board      = ScrabbleUtil.InfiniteRandomBoard.infiniteRandomBoard ()
 //    let board      = ScrabbleUtil.InfiniteRandomBoard.infiniteRandomBoardSeed (Some 42)
 
@@ -53,13 +53,13 @@ let main argv =
 
     let (dictionary, time) = time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
     // Uncomment to test your dictionary
-    // ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test sucessful\n")
-    // let incorrectWords = ScrabbleUtil.Dictionary.test words 10 (dictionary false) // change to true if using a GADDAG
-    // match incorrectWords with
-    // | [] -> ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test sucessful!\n")
-    // | _  ->
-    //    ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test failed for at least the following words: \n") 
-    //    List.iter (fun str -> ScrabbleUtil.DebugPrint.debugPrint (sprintf "%s\n" str)) incorrectWords
+    ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test sucessful\n")
+    let incorrectWords = ScrabbleUtil.Dictionary.test words 10 (dictionary false) // change to true if using a GADDAG
+    match incorrectWords with
+    | [] -> ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test sucessful!\n")
+    | _  ->
+       ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test failed for at least the following words: \n") 
+       List.iter (fun str -> ScrabbleUtil.DebugPrint.debugPrint (sprintf "%s\n" str)) incorrectWords
         
     // Uncomment this line to call your client
     let players    = [("Low Orbit Scrabble Cannon", dictionary, LowOrbitScrabbleCannon.Scrabble.startGame);("OxyphenButazone", dictionary, Oxyphenbutazone.Scrabble.startGame)]        

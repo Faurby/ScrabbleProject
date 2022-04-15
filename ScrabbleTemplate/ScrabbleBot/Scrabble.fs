@@ -33,7 +33,7 @@ module RegEx =
 
     let printHand pieces hand =
         hand |>
-        MultiSet.fold (fun _ x i -> forcePrint (sprintf "%d -> (%A, %d)\n" x (Map.find x pieces) i)) ()
+        MultiSet.fold (fun _ indexOfLetter letterCount -> debugPrint (sprintf "%d -> (%A, %d)\n" indexOfLetter (Map.find indexOfLetter pieces) letterCount)) ()
 
 module State = 
     // Make sure to keep your state localised in this module. It makes your life a whole lot easier.
@@ -61,6 +61,7 @@ module Scrabble =
     let playGame cstream pieces (st : State.state) =
 
         let rec aux (st : State.state) =
+            debugPrint("new aux call:")
             Print.printHand pieces (State.hand st)
 
             // remove the force print when you move on from manual input (or when you have learnt the format)
@@ -68,22 +69,62 @@ module Scrabble =
             let input =  System.Console.ReadLine()
             let move = RegEx.parseMove input
 
-            debugPrint (sprintf "Player %d -> Server:\n%A\n" (State.playerNumber st) move) // keep the debug lines. They are useful.
+            debugPrint (sprintf ":)I Player %d -> Server:\n%A\n" (State.playerNumber st) move) // keep the debug lines. They are useful.
             send cstream (SMPlay move)
 
             let msg = recv cstream
-            debugPrint (sprintf "Player %d <- Server:\n%A\n" (State.playerNumber st) move) // keep the debug lines. They are useful.
+            debugPrint (sprintf ":)II Player %d <- Server:\n%A\n" (State.playerNumber st) move) // keep the debug lines. They are useful.
 
             match msg with
-            | RCM (CMPlaySuccess(ms, points, newPieces)) ->
+            | RCM (CMPlaySuccess(moves, points, newPieces)) ->
                 (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
-                let st' = st // This state needs to be updated
-                aux st'
-            | RCM (CMPlayed (pid, ms, points)) ->
+               
+                // get a multiset of the indexes (uint) of the tiles you played
+                let playedIndexes = moves |> Seq.map (fun m -> fst (snd m)) |> Seq.toList |> MultiSet.ofList
+
+                debugPrint (sprintf "============ PLAYED INDEXES local ============\n%A\n" playedIndexes)
+                debugPrint (sprintf "-----------------\n\n")
+
+
+                // remove played tiles from your hand
+                let subtractedHand = MultiSet.subtract (State.hand st) playedIndexes
+
+                //print the new hand
+                debugPrint (sprintf "============ Subtracted Hand ============\n")
+                Print.printHand pieces subtractedHand
+                debugPrint (sprintf "-----------------\n\n")
+
+                debugPrint (sprintf "============ New Pieces ============\n%A\n" newPieces)
+                debugPrint (sprintf "-----------------\n\n")
+
+                // add the new tiles to your hand
+                let newHand = List.fold (fun acc (indexOfLetter, letterCount) -> 
+                    MultiSet.add indexOfLetter letterCount acc) subtractedHand newPieces
+
+                // Parse the board
+                // let newBoard = Parser.parseBoard (State.board st) moves
+
+                // Update the state
+                // let newState = State.mkState newBoard (State.dict st) (State.playerNumber st) newHand
+
+                let newState = State.mkState (State.board st) (State.dict st) (State.playerNumber st) newHand
+                debugPrint (sprintf "============ Board so far ============\n%A\n\nHAND SO FAR:\n" (State.board st))
+                debugPrint (sprintf "-----------------\nprinthand after end of move\n")
+                Print.printHand pieces newHand
+                debugPrint (sprintf "-----------------\n\n")
+
+
+                aux newState
+            | RCM (CMPlayed (pid, moves, points)) ->
                 (* Successful play by other player. Update your state *)
+                debugPrint (sprintf "============ CMPlayed ============")
+                let playedIndexes = moves |> Seq.map (fun m -> fst (snd m)) |> Seq.toList
+                debugPrint (sprintf "============ PLAYED INDEXES remote ============\n%A\n" playedIndexes)
+
                 let st' = st // This state needs to be updated
                 aux st'
-            | RCM (CMPlayFailed (pid, ms)) ->
+            | RCM (CMPlayFailed (pid, moves)) ->
+                debugPrint (sprintf "============ CMPlayFailed ============")
                 (* Failed play. Update your state *)
                 let st' = st // This state needs to be updated
                 aux st'
