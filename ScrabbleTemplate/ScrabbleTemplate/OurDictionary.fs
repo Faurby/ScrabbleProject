@@ -1,4 +1,7 @@
-module Dictionary
+module OurDictionary
+
+    open ScrabbleUtil
+    open ScrabbleUtil.Dictionary
 
     type Dict =
         | Leaf of bool //(* empty csDict)
@@ -55,7 +58,23 @@ module Dictionary
             match dic.TryGetValue c with
             | (true, value) -> 
                 match value with
-                | Leaf b -> Some (b, value)
-                | Node (b, _) -> Some (b, value)
-            | (false, _) -> None
+                | Leaf b ->
+                    Some (b, value)
+                | Node (b, _) ->
+                    Some (b, value)
+            | (false, _) ->
+                None
         | Leaf _ -> None
+
+//We need to be able to get the longest word from the trie.
+//We do this by stepping through the trie, and keeping track of the longest word.
+//When we reach a leaf, we check if it is longer than the current longest word.
+//If it is, we set the longest word to the current word.
+//If it is not, we do nothing.
+
+
+//Algorithm Logic:
+//Check if the letter exists in the current dictionary.
+//If it does, we step into the dictionary and remove that letter from our list.
+//We then recursivly call our method for each letter left in the list.
+//When we reach a leaf we set the accumulator to the word.

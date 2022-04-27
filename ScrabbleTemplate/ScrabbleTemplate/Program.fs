@@ -1,6 +1,6 @@
 ﻿// Learn more about F# at http://fsharp.org
 
-open Dictionary
+open OurDictionary
 
 let time f =
     let start = System.DateTime.Now
@@ -26,8 +26,8 @@ let main argv =
     System.Console.ForegroundColor <- System.ConsoleColor.Black
     System.Console.Clear()
 
-    let board        = ScrabbleUtil.StandardBoard.standardBoard ()
-//    let board      = ScrabbleUtil.InfiniteBoard.infiniteBoard ()
+//    let board        = ScrabbleUtil.StandardBoard.standardBoard ()
+    let board      = ScrabbleUtil.InfiniteBoard.infiniteBoard ()
 
 //    let board      = ScrabbleUtil.RandomBoard.randomBoard ()
     // let board      = ScrabbleUtil.RandomBoard.randomBoardSeed (Some 42069)
@@ -47,9 +47,7 @@ let main argv =
 
     let dictAPI =
         // Uncomment if you have implemented a dictionary. last element None if you have not implemented a GADDAG
-        Some (Dictionary.empty, Dictionary.insert, Dictionary.step, None) 
-
-
+        Some (OurDictionary.empty, OurDictionary.insert, OurDictionary.step, None) 
 
     let (dictionary, time) = time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
     // Uncomment to test your dictionary

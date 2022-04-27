@@ -1,4 +1,4 @@
-module Dictionary
+module OurDictionary
 
     type Dict
 
