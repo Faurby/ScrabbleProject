@@ -40,7 +40,7 @@ let main argv =
     let words     = readLines "./Dictionaries/English.txt"
 
     let handSize   = 7u
-    let timeout    = None
+    let timeout    = Some 3000u
     let tiles      = ScrabbleUtil.English.tiles 1u
     let seed       = None
     let port       = 13001

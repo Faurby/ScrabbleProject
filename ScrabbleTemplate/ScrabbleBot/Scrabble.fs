@@ -52,9 +52,10 @@ module State =
         hand          : MultiSet.MultiSet<uint32>
         playerTurn    : uint32
         playedLetters : Map<coord, (char * int)>
+        timeout       : uint32 option
     }
 
-    let mkState newBoard newDict newPlayernumber newNumberOfPlayers newHand newPlayerTurn playedLetters= 
+    let mkState newBoard newDict newPlayernumber newNumberOfPlayers newHand newPlayerTurn playedLetters timeout =         
         {
             board = newBoard; 
             dict = newDict;  
@@ -63,6 +64,7 @@ module State =
             hand = newHand
             playerTurn = newPlayerTurn
             playedLetters = playedLetters
+            timeout  = timeout
         }
 
     let board st           = st.board
@@ -72,6 +74,7 @@ module State =
     let hand st            = st.hand
     let playerTurn st      = st.playerTurn
     let playedLetters st   = st.playedLetters
+    let timeout st         = st.timeout
 
     // Given a list of moves, insert played letters into the state (playedLetters)
     let insertMovesIntoState (moves:list<coord * (uint32 * (char * int))>) (state:state) =
@@ -79,7 +82,7 @@ module State =
             let (coord, (_,(char, charPoints))) = move
             //debugPrint (sprintf "Inserting move %A %A\n" coord (char))
             let newPlayedLetters = acc.playedLetters |> Map.add coord (char, charPoints)
-            mkState acc.board acc.dict acc.playerNumber acc.numberOfPlayers acc.hand acc.playerTurn newPlayedLetters
+            mkState acc.board acc.dict acc.playerNumber acc.numberOfPlayers acc.hand acc.playerTurn newPlayedLetters acc.timeout
         ) state moves
     
     let updateHand moves st newPieces =
@@ -156,14 +159,16 @@ module Scrabble =
     open System.Threading
     
     type CoordinatorMessage =
-    | Print of string
-  
-    let playGame cstream pieces (st : State.state) =
+    | AddWord of string * (coord * (int * int))
+    | OutOfTime
+    | GetLongestWord of AsyncReplyChannel<string * (coord * (int * int))>
+                       
+    let playGame cstream pieces (st : State.state) = 
 
         let rec aux (st : State.state) (myTurn: bool) =
             debugPrint("\n\n@@@@@@@@@@@@@@@@\naux call started\n@@@@@@@@@@@@@@@\n\n")
-            
-            if myTurn then
+           
+            if (myTurn) then
                 debugPrint("\n=======================\n**** My Turn ****\n=======================\n")
                 debugPrint(sprintf "**** My hand: ****\n" )
                 Print.printHand pieces (State.hand st)
@@ -178,17 +183,77 @@ module Scrabble =
                     
                     debugPrint(sprintf "**** Playing word: %A ****\n" longestWord )
                     
-                    debugPrint (sprintf "\n\n##########################\n TIME TO CALCULATE MOVE IN MS:\n %f\n##########################\n\n" stopWatch.Elapsed.TotalMilliseconds)
-
                     let move = Utility.wordToMove longestWord (0,0) (1, 0) (State.playedLetters st)
-                    stopWatch.Stop()
                     send cstream (SMPlay move)
                 else
                     // Continuing move
+                    
+                    let mutable listOfWords : (string * (coord * (int * int))) list = List.empty<string * (coord * (int * int))>
+                    let mailboxWithList = MailboxProcessor.Start(fun inbox ->
+                        let rec messageLoop () = async{
+                            let! (msg : CoordinatorMessage) = inbox.Receive()
+                            match msg with
+                            | AddWord (word,(dir,pos)) ->
+                                listOfWords <- (word,(dir,pos))::listOfWords
+                            | OutOfTime -> return ()
+                            | GetLongestWord replyChannel ->
+                                let longestWord =
+                                    List.fold (fun (acc:string * (coord * (int * int))) (word:string * (coord * (int * int))) ->
+                                        if ((fst word).Length) > ((fst acc).Length) then
+                                            word
+                                        else
+                                            acc
+                                    ) ("",((0,0),(0,0))) listOfWords
+                                replyChannel.Reply(longestWord)
+                            return! messageLoop ()
+                        }
+                        messageLoop ())
+                    
+                    let mailboxWithOperations = MailboxProcessor.Start(fun inbox ->
+                        let rec messageLoop () = async{
+                            let! (msg : list<string * (coord * (int * int))>) = inbox.Receive()
+                            
+                            msg |> Seq.map (fun word ->
+                                async {
+                                    // Convert the word to a move
+                                    let move = Utility.wordToMove (fst word) (fst (snd word)) (snd (snd word)) (State.playedLetters st)
+                                    // Insert the new word into a temporary state that we can check to see if the move is legal
+                                    let stateWithInsertedMove = State.insertMovesIntoState move st
+                                    // Get list of every word in the new state
+                                    let everyWordOnTheBoardInStateWithInsertedMove = State.wordLookup stateWithInsertedMove.playedLetters
+                                    
+                                    //TODO: We can skip all of this if the word is shorter than our longest word we've and validated found so far
+                                    // Check to see if every word is in the dictionary. If they are not we do not consider the state valid                                                               
+                                    let stateValid =
+                                        List.fold (fun (stateValidity:bool) (key:string, _) ->
+                                        if stateValidity then
+                                            if key.Length = 1 then
+                                                true
+                                            elif Dictionary.lookup key st.dict then
+                                                true
+                                            else
+                                                false
+                                        else
+                                            false
+                                        ) true everyWordOnTheBoardInStateWithInsertedMove
+                                    
+                                    // Replace our current longest word if word is longer and we have
+                                    // confirmed that every word on the board is in the dictionary
+                                    if stateValid then
+                                        mailboxWithList.Post ( AddWord (word))
+                                        debugPrint (sprintf "I POSTED ASYNC\n")
+                                })
+                            |> Async.Parallel
+                            |> Async.Ignore
+                            |> Async.RunSynchronously
+                            
+                            return! messageLoop ()
+                        }
+                        messageLoop ())
+                    
+                    
                     debugPrint("**** Playing move continuing off what is currently on the board ****\n")
-                    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
-
-
+                    
                     // Find all words already on teh board
                     let starters = State.wordLookup st.playedLetters
 
@@ -203,49 +268,19 @@ module Scrabble =
                         ) [] starters
                         
                     debugPrint(sprintf "**** List of all words we can play: ****\n%A\n" listOfAllWordsWeCanPlay)
-                    
-                    
-                    // For each word, insert it in the state, and check that every word longer than 1 character in the state is in the dictionary
-                    let longestWordWeCanPlay =
-                        List.fold (fun (acc:string * (coord * (int * int))) (wordWithTransform:string * (coord * (int * int))) -> 
-                            let (word, (coord, dir)) = wordWithTransform
-                            // Convert the word to a move
-                            let move = Utility.wordToMove word coord dir (State.playedLetters st)
-                            // Insert the new word into a temporary state that we can check to see if the move is legal
-                            let stateWithInsertedMove = State.insertMovesIntoState move st
-                            // Get list of every word in the new state
-                            let everyWordOnTheBoardInStateWithInsertedMove = State.wordLookup stateWithInsertedMove.playedLetters
-                            
-                            //TODO: We can skip all of this if the word is shorter than our longest word we've and validated found so far
-                            // Check to see if every word is in the dictionary. If they are not we do not consider the state valid                                                               
-                            let stateValid =
-                                List.fold (fun (stateValidity:bool) (key:string, _) ->
-                                if stateValidity then
-                                    if key.Length = 1 then
-                                        true
-                                    elif Dictionary.lookup key st.dict then
-                                        true
-                                    else
-                                        false
-                                else
-                                    false
-                                ) true everyWordOnTheBoardInStateWithInsertedMove
-                            
-                            // Replace our current longest word if word is longer and we have
-                            // confirmed that every word on the board is in the dictionary
-                            if stateValid && word.Length > (fst acc).Length
-                                then wordWithTransform
-                            else
-                                acc   
-                        ) ("", ((0, 0), (0,0))) listOfAllWordsWeCanPlay
                    
-                    let (word, (coord, dir)) = longestWordWeCanPlay
-                    debugPrint (sprintf "\n\n======== Longest word we can play =========\n%A\n" word)
-                    let move = Utility.wordToMove word coord dir (State.playedLetters st)
-
-                    stopWatch.Stop()
-                    debugPrint (sprintf "\n\n##########################\n TIME TO CALCULATE MOVE IN MS:\n %f\n##########################\n\n" stopWatch.Elapsed.TotalMilliseconds)
-
+                    mailboxWithOperations.Post (listOfAllWordsWeCanPlay)
+                                       
+                    match st.timeout with
+                    | Some time -> Thread.Sleep(int (time - (uint32 100)))
+                    | None -> Thread.Sleep(2000)
+                    
+                    let longestWordWeCanPlay = mailboxWithList.PostAndReply(GetLongestWord)
+                    debugPrint (sprintf "Longest word from mailbox: %A\n" (fst longestWordWeCanPlay))
+                    
+                    debugPrint (sprintf "\n\n======== Longest word we can play =========\n%A\n" (fst longestWordWeCanPlay))
+                    
+                    let move = Utility.wordToMove (fst longestWordWeCanPlay) (fst (snd longestWordWeCanPlay)) (snd (snd longestWordWeCanPlay)) (State.playedLetters st)
                     send cstream (SMPlay move)
             else
                 debugPrint("\n=======================\n**** OPPONENT TURN ****\n=======================\n")
@@ -270,7 +305,7 @@ module Scrabble =
                 let newHand = State.updateHand moves st newPieces
 
                 // Update the state
-                let newState = State.mkState (State.board st) (State.dict st) (State.playerNumber st) (State.numberOfPlayers st) newHand (State.playerTurn st) updatedStateLetters.playedLetters
+                let newState = State.mkState (State.board st) (State.dict st) (State.playerNumber st) (State.numberOfPlayers st) newHand (State.playerTurn st) updatedStateLetters.playedLetters st.timeout
                 
                 aux newState false
             | RCM (CMPlayed (pid, moves, points)) ->
@@ -280,7 +315,7 @@ module Scrabble =
                 // Update playedLetters with new moves
                 let updatedStateLetters = State.insertMovesIntoState moves st
 
-                let newState = State.mkState (State.board st) (State.dict st) (State.playerNumber st) (State.numberOfPlayers st) (State.hand st) (State.playerTurn st) updatedStateLetters.playedLetters
+                let newState = State.mkState (State.board st) (State.dict st) (State.playerNumber st) (State.numberOfPlayers st) (State.hand st) (State.playerTurn st) updatedStateLetters.playedLetters st.timeout
                 aux newState (pid % st.numberOfPlayers + 1u = st.playerNumber)
             | RCM (CMPassed (pid)) ->
                 debugPrint (sprintf "============ OTHER PLAYER PASSED ============\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
@@ -294,7 +329,7 @@ module Scrabble =
             | RGPE err -> printfn "Gameplay Error:\n%A" err; aux st false
 
         aux st (st.playerTurn = st.playerNumber)
-        
+                
     let startGame 
             (boardP : boardProg) 
             (dictf : bool -> Dictionary.Dict) 
@@ -319,5 +354,5 @@ module Scrabble =
                   
         let handSet = List.fold (fun acc (x, k) -> MultiSet.add x k acc) MultiSet.empty hand
 
-        fun () -> playGame cstream tiles (State.mkState board dict playerNumber numPlayers handSet playerTurn Map.empty)
+        fun () -> playGame cstream tiles (State.mkState board dict playerNumber numPlayers handSet playerTurn Map.empty timeout)
         
