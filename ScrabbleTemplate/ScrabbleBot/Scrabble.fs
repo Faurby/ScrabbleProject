@@ -4,6 +4,7 @@ open Microsoft.VisualBasic
 open ScrabbleUtil
 open ScrabbleUtil.Dictionary
 open ScrabbleUtil.ServerCommunication
+open Utility
 
 open System.IO
 
@@ -36,114 +37,6 @@ module RegEx =
     let printHand pieces hand =
         hand |>
         MultiSet.fold (fun _ indexOfLetter letterCount -> debugPrint (sprintf "%d -> (%A, %d)\n" indexOfLetter (Map.find indexOfLetter pieces) letterCount)) ()
-    
-    // char number to points (borrowed from https://github.com/4lgn/scrabble-bot/blob/master/ScrabbleBot/Helpers.fs)
-    let charNumberToPoints (ch: int) = 
-            match ch with
-            | 0                                             -> 0
-            | 1 | 5 | 9 | 12 | 14 | 15 | 18 | 19 | 20 | 21  -> 1
-            | 4 | 7                                         -> 2
-            | 2 | 3 | 13 | 16                               -> 3
-            | 6 | 8 | 22 | 23 | 25                          -> 4
-            | 11                                            -> 5
-            | 10 | 24                                       -> 8
-            | 17 | 26                                       -> 10
-            | _                                             -> failwith "Not valid character index"
-
-    let uintToChar id = char(id + 64u)
-
-    // char to uint (borrowed from https://github.com/4lgn/scrabble-bot/blob/master/ScrabbleBot/Helpers.fs)
-    let charToUint ch = 
-        if (ch = '?') then 0u
-        else uint32(System.Char.ToUpper(ch)) - 64u
-
-    // Given a hand, return list of chars
-    let handToChar hand =
-        MultiSet.toList hand |> List.map uintToChar
-    
-    // Given a word, convert to list of moves
-    let wordToMove (word:string) (startingCoord:coord) (direction: (int*int)) (playedLetters: Map<coord, (char * int)>) =
-        let aux (word:string) (startingCoord:coord) (direction: (int*int)) (playedLetters: Map<coord, (char * int)>) =
-            List.fold (fun (acc:(list<(int*int) * (uint32 * (char * int))> * int)) char ->
-            let (directionRight, directionDown) = direction
-            let (x, y) = startingCoord
-            let index = (snd acc)
-            let listOfMoves = (fst acc)
-
-            let coordToPlaceLetter = (x + (index * directionRight), (y + (index * directionDown)))
-            let charnumber = charToUint char
-
-            // Print coordtoplaceletter
-            //debugPrint (sprintf "CoordToPlaceLetter: %d, %d\n" (fst coordToPlaceLetter) (snd coordToPlaceLetter))
-
-            match playedLetters.TryGetValue coordToPlaceLetter with
-            | (true, _) -> (listOfMoves, index+1)
-            | (false, _) -> (coordToPlaceLetter, (charnumber,(char, charNumberToPoints (int charnumber))))::listOfMoves, index+1
-            ) ([], 0) (word |> Seq.toList)
-        fst (aux word startingCoord direction playedLetters)
-
-    // Convert multiset<uint32> to multiset<char>
-    let multisetToChar = MultiSet.map (fun i -> uintToChar i) 
-
-    let rec getLongestWordFirstMove (hand : MultiSet<uint32>) (accCurrentString : string) (dict : Dict) (playedLetters: Map<coord, (char * int)>) (coord:coord) (direction:(int * int)) =
-
-        // First determine what exists at the coordinate of the letter we are writing. If there is already a letter we must weave
-        // This into the word we are writing rather than using letters from our hand
-        let existingLetter = Map.tryFind coord playedLetters
-        
-        // This is what we will be building the word with. (What we fold over)
-        // If there is not already a letter on the board we use the letters in our hand
-        // If there is a letter on the board we use this letter instead of our hand. This lets us
-        // weave in existing letters on the board to the word we are constructing
-        let wordBuildingBlock =
-            match existingLetter with
-            | Some value -> MultiSet.toList (MultiSet.addSingle (fst value) MultiSet.empty)
-            | None _ -> MultiSet.toList (multisetToChar hand)
-        
-        //debugPrint (sprintf "In getting longest word: \n Word so far: %A\n hand: %A\n\n" accCurrentString hand)
-        
-        // Fold over our world building blocks
-        List.fold (fun (longestWordSoFar:string) letter ->
-            
-            // Get The string we are looking at now within List.fold
-            let currentString = (accCurrentString + (string) letter)
-            
-            // Get child node dictionary
-            let childNode = Dictionary.step letter dict
-          
-            // Check child node to see if we have hit the end of a word
-            match childNode with
-            | Some (currentStringIsWord, nodeDict) ->               
-                // If the letter does not already exist on the board we remove it from our hand
-                let newHand = match existingLetter with
-                | Some _ -> hand
-                | None _ -> (MultiSet.removeSingle (charToUint letter) hand)
-                
-                // Figure out the coord based on the direction and last coord
-                let newCoord = (fst(coord) + fst(direction), snd(coord) + snd(direction))
-                
-                // Recursively piece together all words
-                let newPotentialWord = getLongestWordFirstMove newHand currentString (nodeDict)  (playedLetters: Map<coord, (char * int)>) newCoord direction
-                
-                if currentStringIsWord && currentString.Length > newPotentialWord.Length && currentString.Length > longestWordSoFar.Length then
-                    currentString
-                elif newPotentialWord.Length > longestWordSoFar.Length then
-                    newPotentialWord
-                else
-                    longestWordSoFar
-            | None _ -> longestWordSoFar
-            ) "" wordBuildingBlock
-    
-    let getLongestWordContinuation (hand : MultiSet<uint32>) (accCurrentString: string) (dict: Dict) (playedLetters: Map<coord, (char * int)>) (coord:coord) (direction:(int * int))=
-        // Get dict from word so far
-        let (wordLength, wordDictSoFar) =
-            List.fold (fun (depth:int, dict:Dict) letter ->
-                let childNode = Dictionary.step letter dict
-                match childNode with
-                | Some (_, nodeDict) ->
-                    (depth + 1, nodeDict)
-            ) (0,dict) (accCurrentString |> Seq.toList)
-        getLongestWordFirstMove hand accCurrentString wordDictSoFar playedLetters ((fst coord) + ((fst direction) * wordLength),(snd coord) + ((snd direction) * wordLength)) direction  
     
 module State = 
     // Make sure to keep your state localised in this module. It makes your life a whole lot easier.
@@ -187,34 +80,72 @@ module State =
             //debugPrint (sprintf "Inserting move %A %A\n" coord (char))
             let newPlayedLetters = acc.playedLetters |> Map.add coord (char, charPoints)
             mkState acc.board acc.dict acc.playerNumber acc.numberOfPlayers acc.hand acc.playerTurn newPlayedLetters
-        ) state moves 
+        ) state moves
     
-    // Recusively move to the next and when we hit an empty square, return the word.
-    // If letter has non-empty square over or to the left, return.
-    let getExistingWord (coord:coord) (direction:(int * int)) (playedLetters) =
-        let rec aux (coord:coord) (direction:(int * int)) (playedLetters) acc =
-            let newCoord = (fst(coord) + fst(direction), snd(coord) + snd(direction))
-            match Map.tryFind newCoord playedLetters with
-            | None -> acc
-            | Some (letter, _) -> aux newCoord direction playedLetters (acc + string letter)
-        
-        // Early opt-out
-        let checkPrevious = (fst(coord) - fst(direction), snd(coord) - snd(direction))
-        match Map.tryFind checkPrevious playedLetters with
-        | None -> Some (aux coord direction playedLetters (string (fst(Map.find coord playedLetters))))
-        | Some a -> None
+    let updateHand moves st newPieces =
+                // get a multiset of the indexes (uint) of the tiles you played
+                let playedIndexes = 
+                    moves 
+                    |> Seq.map (fun move -> 
+                        let (_, (charuint, (_, _))) = move
+                        charuint
+                        ) 
+                    |> Seq.toList 
+                    |> MultiSet.ofList
 
-    let directionalWordLookup playedLetters dir =
-        Map.fold (fun (acc:List<(string * (coord * (int * int)))>) (coord:coord) ((letter:char), _) -> 
-            // See if there already exists a downward word on these coordinates
-            let existingWordDown = getExistingWord coord dir playedLetters
-            match existingWordDown with
-            | Some a -> (a, (coord, dir)) :: acc
-            | None -> acc
-            ) [] playedLetters
+                // remove played tiles from your hand
+                let subtractedHand = MultiSet.subtract (hand st) playedIndexes
 
-    // Returns map of starters
+                // add the new tiles to your hand
+                List.fold (fun acc (indexOfLetter, letterCount) -> 
+                MultiSet.add indexOfLetter letterCount acc) subtractedHand newPieces
+
+
+    // Returns list of starters. A starter is a word we can play that starts at the given coord. 
+    // The form is (word, (coord, direction))
     let wordLookup playedLetters = 
+        let directionalWordLookup playedLetters dir =
+            let getExistingWord (coord:coord) (direction:dir) (playedLetters) =                
+                let rec recursivelyMoveInDir (coord:coord) (direction:dir) (playedLetters) acc =
+                    let (x, y) = coord
+                    let (dx, dy) = dir
+
+                    // Check next coord, if there is a letter
+                    let newCoord = (x + dx, y + dy)
+                    match Map.tryFind newCoord playedLetters with
+                    | None -> 
+                        // If we hit an empty square, return the word
+                        acc
+                    | Some (letter, _) -> 
+                        // If we hit a letter, recursively move in the same direction
+                        recursivelyMoveInDir newCoord direction playedLetters (acc + string letter)
+                
+                // Check if letter is in middle of word
+                let (x, y) = coord
+                let (dx, dy) = dir
+                let checkPrevious = (x - dx, y - dy)
+                match Map.tryFind checkPrevious playedLetters with
+                | None ->
+                    // If none, then we can move in the direction (because we are at the start of the word)) 
+                    let letter = (string (fst(Map.find coord playedLetters)))
+                    Some (recursivelyMoveInDir coord direction playedLetters letter)
+                | Some _ -> 
+                    // If there is a letter, then we are in the middle of a word.
+                    None
+
+            // Get the existing word in the given direction.
+            Map.fold (fun (acc:List<(string * (coord * dir))>) (coord:coord) ((letter:char), _) -> 
+                let existingWord = getExistingWord coord dir playedLetters
+                match existingWord with
+                | Some word -> 
+                    // If we found a word, add it to the list
+                    (word, (coord, dir)) :: acc
+                | None -> 
+                    // If we didn't find a word, return the list
+                    acc
+                ) [] playedLetters
+
+        // Get the existing words right and down direction.
         let downWords = directionalWordLookup playedLetters (0,1)
         let rightWords = directionalWordLookup playedLetters (1,0)
         
@@ -222,13 +153,17 @@ module State =
         downWords@rightWords
 
 module Scrabble =
-    open System.Threading  
+    open System.Threading
+    
+    type CoordinatorMessage =
+    | Print of string
+  
     let playGame cstream pieces (st : State.state) =
 
         let rec aux (st : State.state) (myTurn: bool) =
             debugPrint("\n\n@@@@@@@@@@@@@@@@\naux call started\n@@@@@@@@@@@@@@@\n\n")
-
-            if (myTurn) then
+            
+            if myTurn then
                 debugPrint("\n=======================\n**** My Turn ****\n=======================\n")
                 debugPrint(sprintf "**** My hand: ****\n" )
                 Print.printHand pieces (State.hand st)
@@ -236,26 +171,31 @@ module Scrabble =
                 if st.playedLetters.Count = 0 then
                     // First move
                     debugPrint("**** Playing the first word of the game ****\n")
+                    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 
                     // Find the longest word we can play on our hand
-                    let longestWord = Print.getLongestWordFirstMove (State.hand st) "" st.dict st.playedLetters (0,0) (1,0)
+                    let longestWord = MoveFinder.getLongestWordFirstMove (State.hand st) "" st.dict st.playedLetters (0,0) (1,0)
                     
                     debugPrint(sprintf "**** Playing word: %A ****\n" longestWord )
                     
-                    let move = Print.wordToMove longestWord (0,0) (1, 0) (State.playedLetters st)
+                    debugPrint (sprintf "\n\n##########################\n TIME TO CALCULATE MOVE IN MS:\n %f\n##########################\n\n" stopWatch.Elapsed.TotalMilliseconds)
+
+                    let move = Utility.wordToMove longestWord (0,0) (1, 0) (State.playedLetters st)
+                    stopWatch.Stop()
                     send cstream (SMPlay move)
                 else
                     // Continuing move
                     debugPrint("**** Playing move continuing off what is currently on the board ****\n")
-                    
-                    //TODO: replace starters map with list. Right now we will overwrite any duplicate starters.
+                    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
+
+
                     // Find all words already on teh board
                     let starters = State.wordLookup st.playedLetters
 
                     let listOfAllWordsWeCanPlay =
                         List.fold (fun (acc:list<string * (coord * (int * int))>) (key,value) ->
                             let (coord, dir) = value
-                            let longestWord = Print.getLongestWordContinuation (State.hand st) key (State.dict st) st.playedLetters coord dir
+                            let longestWord = MoveFinder.getLongestWordContinuation (State.hand st) key (State.dict st) st.playedLetters coord dir
                             if longestWord.Length > 0 then
                                 (longestWord, value)::acc
                             else
@@ -264,11 +204,13 @@ module Scrabble =
                         
                     debugPrint(sprintf "**** List of all words we can play: ****\n%A\n" listOfAllWordsWeCanPlay)
                     
+                    
                     // For each word, insert it in the state, and check that every word longer than 1 character in the state is in the dictionary
                     let longestWordWeCanPlay =
-                        List.fold (fun (acc:string * (coord * (int * int))) (word:string * (coord * (int * int))) -> 
+                        List.fold (fun (acc:string * (coord * (int * int))) (wordWithTransform:string * (coord * (int * int))) -> 
+                            let (word, (coord, dir)) = wordWithTransform
                             // Convert the word to a move
-                            let move = Print.wordToMove (fst word) (fst (snd word)) (snd (snd word)) (State.playedLetters st)
+                            let move = Utility.wordToMove word coord dir (State.playedLetters st)
                             // Insert the new word into a temporary state that we can check to see if the move is legal
                             let stateWithInsertedMove = State.insertMovesIntoState move st
                             // Get list of every word in the new state
@@ -291,29 +233,23 @@ module Scrabble =
                             
                             // Replace our current longest word if word is longer and we have
                             // confirmed that every word on the board is in the dictionary
-                            if stateValid && ((fst word).Length > (fst acc).Length)
-                                then word
+                            if stateValid && word.Length > (fst acc).Length
+                                then wordWithTransform
                             else
-                                acc
-                                          
+                                acc   
                         ) ("", ((0, 0), (0,0))) listOfAllWordsWeCanPlay
                    
-                    //let longestWordWeCanPlay =
-                    //    List.fold (fun (acc:string * (coord * (int * int))) (elem:string * (coord * (int * int))) -> 
-                    //        if ((fst elem).Length > (fst acc).Length)
-                    //            then elem
-                    //        else
-                    //            acc
-                    //    ) ("", ((0, 0), (0,0))) listOfAllWordsWeCanPlay
+                    let (word, (coord, dir)) = longestWordWeCanPlay
+                    debugPrint (sprintf "\n\n======== Longest word we can play =========\n%A\n" word)
+                    let move = Utility.wordToMove word coord dir (State.playedLetters st)
 
-                    debugPrint (sprintf "\n\n======== Longest word we can play =========\n%A\n" (fst longestWordWeCanPlay))
-                    
-                    let move = Print.wordToMove (fst longestWordWeCanPlay) (fst (snd longestWordWeCanPlay)) (snd (snd longestWordWeCanPlay)) (State.playedLetters st)
+                    stopWatch.Stop()
+                    debugPrint (sprintf "\n\n##########################\n TIME TO CALCULATE MOVE IN MS:\n %f\n##########################\n\n" stopWatch.Elapsed.TotalMilliseconds)
+
                     send cstream (SMPlay move)
             else
                 debugPrint("\n=======================\n**** OPPONENT TURN ****\n=======================\n")
         
-            //Print.printHand pieces (State.hand st)
 
             // What we send to server
             // debugPrint (sprintf ":)I Player %d -> Server:\n%A\n" (State.playerNumber st) move) // keep the debug lines. They are useful.
@@ -326,18 +262,12 @@ module Scrabble =
             | RCM (CMPlaySuccess(moves, points, newPieces)) ->
                 (* Successful play by you. Update your state (remove old tiles, add the new ones, change turn, etc) *)
                 debugPrint (sprintf "============ Successful play by you. ============\n")
+
                 // Update playedLetters with new moves
                 let updatedStateLetters = State.insertMovesIntoState moves st
 
-                // get a multiset of the indexes (uint) of the tiles you played
-                let playedIndexes = moves |> Seq.map (fun m -> fst (snd m)) |> Seq.toList |> MultiSet.ofList
-
-                // remove played tiles from your hand
-                let subtractedHand = MultiSet.subtract (State.hand st) playedIndexes
-
-                // add the new tiles to your hand
-                let newHand = List.fold (fun acc (indexOfLetter, letterCount) -> 
-                    MultiSet.add indexOfLetter letterCount acc) subtractedHand newPieces
+                // Update hand
+                let newHand = State.updateHand moves st newPieces
 
                 // Update the state
                 let newState = State.mkState (State.board st) (State.dict st) (State.playerNumber st) (State.numberOfPlayers st) newHand (State.playerTurn st) updatedStateLetters.playedLetters
@@ -352,38 +282,18 @@ module Scrabble =
 
                 let newState = State.mkState (State.board st) (State.dict st) (State.playerNumber st) (State.numberOfPlayers st) (State.hand st) (State.playerTurn st) updatedStateLetters.playedLetters
                 aux newState (pid % st.numberOfPlayers + 1u = st.playerNumber)
+            | RCM (CMPassed (pid)) ->
+                debugPrint (sprintf "============ OTHER PLAYER PASSED ============\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
+                aux st (pid % st.numberOfPlayers + 1u = st.playerNumber)
             | RCM (CMPlayFailed (pid, moves)) ->
                 debugPrint (sprintf "============ CMPlayFailed ============\n")
                 (* Failed play. Update your state *)
-                let st' = st // This state needs to be updated
-                aux st' (pid % st.numberOfPlayers + 1u = st.playerNumber)
+                aux st (pid % st.numberOfPlayers + 1u = st.playerNumber)
             | RCM (CMGameOver _) -> ()
             | RCM a -> failwith (sprintf "not implmented: %A" a)
             | RGPE err -> printfn "Gameplay Error:\n%A" err; aux st false
 
         aux st (st.playerTurn = st.playerNumber)
-        
-    // let getLongestWord (cList : char List) =
-    //    let rec getLongestWordAux (cList : char List) (currentWord : string) =
-    //        function
-    //        | Leaf (true) -> currentWord
-    //        | Node (_, dic) ->
-    //            List.fold (fun acc ele -> 
-    //            match dic.TryGetValue ele with
-    //            | (true, value) -> 
-    //                let newWord = getLongestWordAux (List.filter (fun x -> x <> ele) cList) (currentWord + (string) ele) (value)
-    //                if newWord.Length > acc.Length then newWord
-    //                else acc
-    //            | (false, _) -> acc
-    //            ) "" cList
-    //        | Leaf (false) -> "Something went wrong..."
-    //    getLongestWordAux cList ""
-    
-    
-    
-        
-    // For each letter in hand
-        // step function for each letter.
         
     let startGame 
             (boardP : boardProg) 
