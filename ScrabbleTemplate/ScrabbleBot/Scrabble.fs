@@ -310,9 +310,7 @@ module Scrabble =
                     debugPrint (sprintf "\n\n======== Longest word we can play =========\n%A\n" (fst longestWordWeCanPlay))
                     
                     if (fst longestWordWeCanPlay).Length = 0 then
-                        // If we did not find a move change the entire hand
-                        // If there are no free pieces left in the game this gives us an error. How can we check that?
-                        send cstream (SMChange (MultiSet.toList st.hand))
+                        send cstream (SMPass)
                     else
                         let move = Utility.wordToMove (fst longestWordWeCanPlay) (fst (snd longestWordWeCanPlay)) (snd (snd longestWordWeCanPlay)) (State.playedLetters st)
                         send cstream (SMPlay move)
