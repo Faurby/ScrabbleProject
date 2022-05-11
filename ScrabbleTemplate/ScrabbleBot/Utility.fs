@@ -30,26 +30,43 @@ module internal Utility
         MultiSet.toList hand |> List.map uintToChar
 
     // Convert multiset<uint32> to multiset<char>
-    let multisetToChar = MultiSet.map (fun i -> uintToChar i) 
+    let multisetToChar = MultiSet.map (fun (i:uint) ->
+        if i = 0u then
+            //Kinda cursed ngl
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ".ToCharArray() |> Array.toList
+        else
+            [uintToChar i]
+    ) 
 
     // Given a word, convert to list of moves
     let wordToMove (word:string) (startingCoord:coord) (direction: (int*int)) (playedLetters: Map<coord, (char * int)>) =
         let aux (word:string) (startingCoord:coord) (direction: (int*int)) (playedLetters: Map<coord, (char * int)>) =
-            List.fold (fun (acc:(list<(int*int) * (uint32 * (char * int))> * int)) char ->
+            List.fold (fun (acc:(list<(int*int) * (uint32 * (char * int))> * (int * bool))) char ->
                 let (directionRight, directionDown) = direction
                 let (x, y) = startingCoord
-                let index = (snd acc)
+                let index = (fst (snd acc))
+                let charIsWildcard = (snd (snd acc))
                 let listOfMoves = (fst acc)
 
                 let coordToPlaceLetter = (x + (index * directionRight), (y + (index * directionDown)))
-                let charnumber = charToUint char
+                let charNumber =
+                    if charIsWildcard then
+                        0u
+                    else
+                        charToUint char
 
                 // Print coordtoplaceletter
                 //debugPrint (sprintf "CoordToPlaceLetter: %d, %d\n" (fst coordToPlaceLetter) (snd coordToPlaceLetter))
 
                 match playedLetters.TryGetValue coordToPlaceLetter with
-                | (true, _) -> (listOfMoves, index+1)
-                | (false, _) -> (coordToPlaceLetter, (charnumber,(char, charNumberToPoints (int charnumber))))::listOfMoves, index+1
-            ) ([], 0) (word |> Seq.toList)
+                | (true, _) -> (listOfMoves, (index+1,false))
+                | (false, _) ->
+                    // We store wildcards in word as a question mark followed by the used letter. This means we have to check if we
+                    // have hit a question mark and if we have we have to skip it and play a wildcard on the next move
+                    if char = '?' then
+                        (listOfMoves, (index,true))
+                    else
+                        (coordToPlaceLetter, (charNumber,(char, charNumberToPoints (int charNumber))))::listOfMoves, (index+1,false)
+            ) ([], (0,false)) (word |> Seq.toList)
         fst (aux word startingCoord direction playedLetters)
 

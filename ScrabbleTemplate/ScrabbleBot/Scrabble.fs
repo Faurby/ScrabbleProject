@@ -159,13 +159,15 @@ module Scrabble =
     open System.Threading
     
     type CoordinatorMessage =
+    | Timeout of uint
     | AddWord of string * (coord * (int * int))
-    | OutOfTime
-    | GetLongestWord of AsyncReplyChannel<string * (coord * (int * int))>
-                       
+    | Done
     let playGame cstream pieces (st : State.state) = 
 
         let rec aux (st : State.state) (myTurn: bool) =
+            let timeout = new System.Diagnostics.Stopwatch()
+            timeout.Start()
+            
             debugPrint("\n\n@@@@@@@@@@@@@@@@\naux call started\n@@@@@@@@@@@@@@@\n\n")
            
             if (myTurn) then
@@ -187,29 +189,38 @@ module Scrabble =
                     send cstream (SMPlay move)
                 else
                     // Continuing move
-                    
                     let mutable listOfWords : (string * (coord * (int * int))) list = List.empty<string * (coord * (int * int))>
-                    let mailboxWithList = MailboxProcessor.Start(fun inbox ->
+                    let mutable continueWithBestWordFoundSoFar : bool = false;
+                    
+                    let timeKeeper = MailboxProcessor.Start(fun inbox ->
                         let rec messageLoop () = async{
                             let! (msg : CoordinatorMessage) = inbox.Receive()
                             match msg with
-                            | AddWord (word,(dir,pos)) ->
-                                listOfWords <- (word,(dir,pos))::listOfWords
-                            | OutOfTime -> return ()
-                            | GetLongestWord replyChannel ->
-                                let longestWord =
-                                    List.fold (fun (acc:string * (coord * (int * int))) (word:string * (coord * (int * int))) ->
-                                        if ((fst word).Length) > ((fst acc).Length) then
-                                            word
-                                        else
-                                            acc
-                                    ) ("",((0,0),(0,0))) listOfWords
-                                replyChannel.Reply(longestWord)
+                            | Timeout time ->
+                                Thread.Sleep(int (time - (uint32 100)))
+                                // Timeout reached, set continue to true
+                                DebugPrint.debugPrint "\n\nDone sleeping\n\n"
+                                continueWithBestWordFoundSoFar <- true
                             return! messageLoop ()
                         }
                         messageLoop ())
                     
-                    let mailboxWithOperations = MailboxProcessor.Start(fun inbox ->
+                    let wordKeeper = MailboxProcessor.Start(fun inbox ->
+                        let rec messageLoop () = async{
+                            let! (msg : CoordinatorMessage) = inbox.Receive()
+                            match msg with
+                            | AddWord (word,(dir,pos)) ->
+                                DebugPrint.debugPrint (sprintf "new word! %A" word)
+                                listOfWords <- (word,(dir,pos))::listOfWords
+                            | Done ->
+                                DebugPrint.debugPrint "\n\nDone thinking\n\n"
+                                continueWithBestWordFoundSoFar <- true
+                            return! messageLoop ()
+                        }
+                        messageLoop ())
+                    
+                    
+                    let wordProcessor = MailboxProcessor.Start(fun inbox ->
                         let rec messageLoop () = async{
                             let! (msg : list<string * (coord * (int * int))>) = inbox.Receive()
                             
@@ -240,17 +251,17 @@ module Scrabble =
                                     // Replace our current longest word if word is longer and we have
                                     // confirmed that every word on the board is in the dictionary
                                     if stateValid then
-                                        mailboxWithList.Post ( AddWord (word))
-                                        debugPrint (sprintf "I POSTED ASYNC\n")
+                                        wordKeeper.Post (AddWord word)
                                 })
                             |> Async.Parallel
                             |> Async.Ignore
                             |> Async.RunSynchronously
+
+                            wordKeeper.Post Done
                             
                             return! messageLoop ()
                         }
                         messageLoop ())
-                    
                     
                     debugPrint("**** Playing move continuing off what is currently on the board ****\n")
                     
@@ -269,19 +280,42 @@ module Scrabble =
                         
                     debugPrint(sprintf "**** List of all words we can play: ****\n%A\n" listOfAllWordsWeCanPlay)
                    
-                    mailboxWithOperations.Post (listOfAllWordsWeCanPlay)
-                                       
-                    match st.timeout with
-                    | Some time -> Thread.Sleep(int (time - (uint32 100)))
-                    | None -> Thread.Sleep(2000)
+                    wordProcessor.Post (listOfAllWordsWeCanPlay)
                     
-                    let longestWordWeCanPlay = mailboxWithList.PostAndReply(GetLongestWord)
-                    debugPrint (sprintf "Longest word from mailbox: %A\n" (fst longestWordWeCanPlay))
+                    // Infinite loop with mutable channel variable to indicate we can continue   
+                   
+                    // keep the thread locked until we are ready to continue
+                    while (not continueWithBestWordFoundSoFar) do
+                        Thread.Sleep 1
+                        
+                        // Timeout check
+                        match st.timeout with
+                        | Some time ->
+                            if timeout.ElapsedMilliseconds > (int64 time - int64 200) then
+                                debugPrint "\n\ntimeout reached\n\n"
+                                continueWithBestWordFoundSoFar <- true
+                        
+                        DebugPrint.debugPrint (sprintf "Thinking %A... " timeout.ElapsedMilliseconds)
+                    
+                    let longestWordWeCanPlay =
+                        List.fold (fun (acc:string * (coord * (int * int))) (word:string * (coord * (int * int))) ->
+                            if ((fst word).Length) > ((fst acc).Length) then
+                                word
+                            else
+                                acc
+                        ) ("",((0,0),(0,0))) listOfWords
+                    
+                    debugPrint (sprintf "Longest word from mutable: %A\n" (fst longestWordWeCanPlay))
                     
                     debugPrint (sprintf "\n\n======== Longest word we can play =========\n%A\n" (fst longestWordWeCanPlay))
                     
-                    let move = Utility.wordToMove (fst longestWordWeCanPlay) (fst (snd longestWordWeCanPlay)) (snd (snd longestWordWeCanPlay)) (State.playedLetters st)
-                    send cstream (SMPlay move)
+                    if (fst longestWordWeCanPlay).Length = 0 then
+                        // If we did not find a move change the entire hand
+                        // If there are no free pieces left in the game this gives us an error. How can we check that?
+                        send cstream (SMChange (MultiSet.toList st.hand))
+                    else
+                        let move = Utility.wordToMove (fst longestWordWeCanPlay) (fst (snd longestWordWeCanPlay)) (snd (snd longestWordWeCanPlay)) (State.playedLetters st)
+                        send cstream (SMPlay move)
             else
                 debugPrint("\n=======================\n**** OPPONENT TURN ****\n=======================\n")
         
