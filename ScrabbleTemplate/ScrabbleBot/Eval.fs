@@ -1,6 +1,4 @@
-﻿// Insert your updated Eval.fs file here from Assignment 7. All modules must be internal.
-
-module internal Eval
+﻿module internal Eval
 
     open StateMonad
 
@@ -9,6 +7,7 @@ module internal Eval
     let hello = ('H', 4)::('E', 1)::('L', 1)::('L', 1)::('O', 1)::[]
     let state = mkState [("x", 5); ("y", 42)] hello ["_pos_"; "_result_"]
     let emptyState = mkState [] [] []
+    
 
     type aExp =
         | N of int
@@ -40,7 +39,8 @@ module internal Eval
        | Conj of bExp * bExp  (* boolean conjunction *)
 
        | IsVowel of cExp      (* check for vowel *)
-       | IsConsonant of cExp  (* check for consonant *)
+       | IsLetter of cExp     (* check for letter *)
+       | IsDigit of cExp      (* check for digit *)
 
     let (.+.) a b = Add (a, b)
     let (.-.) a b = Sub (a, b)
@@ -96,10 +96,9 @@ module internal Eval
         | ALt (x, y) -> alt (arithEval x) (arithEval y)
         | Not x -> boolEval x >>= (fun a -> ret (not a))
         | Conj (x, y) -> conj (boolEval x) (boolEval y)
-        // | IsDigit x -> charEval x >>= (fun a -> ret (System.Char.IsDigit a))
-        // | IsLetter x -> charEval x >>= (fun a -> ret (System.Char.IsLetter a))
+        | IsDigit x -> charEval x >>= (fun a -> ret (System.Char.IsDigit a))
+        | IsLetter x -> charEval x >>= (fun a -> ret (System.Char.IsLetter a))
         | IsVowel x -> charEval x >>= (fun a -> ret ("aeuioæøå".Contains(System.Char.ToLower a)))
-        | IsConsonant x -> charEval x >>= (fun a -> ret ("bcdfghjklmnpqrstvwxyz".Contains(System.Char.ToLower a)))
 
 
     type stm =                (* statements *)
@@ -110,7 +109,14 @@ module internal Eval
     | ITE of bExp * stm * stm (* if-then-else statement *)
     | While of bExp * stm     (* while statement *)
 
-    let rec stmntEval stmnt : SM<unit> = failwith "Not implemented"
+    let rec stmntEval stmnt : SM<unit> =
+        match stmnt with
+        | Declare x -> declare x
+        | Ass (x, y) -> ((arithEval y) >>= (fun a -> update x a))
+        | Skip -> ret ()
+        | Seq (x, y) -> stmntEval x >>>= stmntEval y
+        | ITE (x, y, z) -> push >>>= (boolEval x >>= (fun a -> if a then stmntEval y else stmntEval z))
+        | While (x, y) -> push >>>= (boolEval x >>= (fun a -> if a then stmntEval y >>>= stmntEval (While (x, y)) else ret ()))
 
 (* Part 3 (Optional) *)
 
@@ -124,30 +130,164 @@ module internal Eval
         
     let prog = new StateBuilder()
 
-    let arithEval2 a = failwith "Not implemented"
-    let charEval2 c = failwith "Not implemented"
-    let rec boolEval2 b = failwith "Not implemented"
+    let rec arithEval2 (a: aExp) : SM<int> =
+        prog {
+            match a with
+            | WL ->
+                let! wl = wordLength
+                return wl
+            | PV x ->
+                let! value = arithEval2 x
+                let! result = pointValue value
+                return result
+            | V x ->
+                let! result = lookup x
+                return result
+            | Add (x, y) ->
+                let! result = add (arithEval2 x) (arithEval2 y)
+                return result
+            | Sub (x, y) ->
+                let! result = sub (arithEval2 x) (arithEval2 y)
+                return result
+            | Mul (x, y) ->
+                let! result = mul (arithEval2 x) (arithEval2 y)
+                return result
+            | Mod (x, y) ->
+                let! result = modu (arithEval2 x) (arithEval2 y)
+                return result
+            | Div (x, y) ->
+                let! result = div (arithEval2 x) (arithEval2 y)
+                return result
+            | N x ->
+                return x
+            | CharToInt x ->
+                let! result = charEval x
+                return int result
+        }
+    let rec charEval2  (c: cExp) : SM<char> =
+        prog {
+            match c with
+            | C x ->
+                return x  
+            | CV x ->
+                let! value = arithEval2 x
+                let! result = characterValue value
+                return result
+            | ToUpper x ->
+                let! value = charEval2 x
+                return System.Char.ToUpper value
+            | ToLower x ->
+                let! value = charEval2 x
+                return System.Char.ToLower value
+            | IntToChar x ->
+                let! value = arithEval2 x
+                return char value
+        }
+    let rec boolEval2 (b: bExp) : SM<bool> =
+        prog {
+            match b with
+            | TT ->
+                return true
+            | FF ->
+                return false
+            | AEq (x, y) ->
+                let! result = aeq (arithEval2 x) (arithEval2 y)
+                return result
+            | ALt (x, y) ->
+                let! result = alt (arithEval2 x) (arithEval2 y)
+                return result
+            | Not x ->
+                let! value = boolEval2 x
+                return not value
+            | Conj (x, y) ->
+                let! result = conj (boolEval2 x) (boolEval2 y)
+                return result
+            | IsDigit x ->
+                let! value = charEval x
+                return System.Char.IsDigit value
+            | IsLetter x ->
+                let! value = charEval x
+                return System.Char.IsLetter value
+            | IsVowel x ->
+                let! value = charEval x
+                return "aeuioæøå".Contains(System.Char.ToLower value)
+        }
 
-    let stmntEval2 stm = failwith "Not implemented"
+    let rec stmntEval2 stmnt : SM<unit> =
+        prog {
+            match stmnt with
+            | Declare x ->
+                do! declare x
+            | Ass (x, y) ->
+                let! value = arithEval2 y
+                do! update x value
+            | Skip ->
+                return ()
+            | Seq (x, y) ->
+                do! stmntEval x
+                do! stmntEval y
+            | ITE (x, y, z) ->
+                do! push
+                let! eval = boolEval2 x
+                if eval then
+                    do! stmntEval2 y
+                else
+                    do! stmntEval2 z
+            | While (x, y) ->
+                do! push
+                let! eval = boolEval x
+                if eval then
+                    do! stmntEval2 y
+                    do! stmntEval2 (While (x, y))
+                else
+                    return ()
+        }
 
 (* Part 4 (Optional) *) 
 
     type word = (char * int) list
     type squareFun = word -> int -> int -> Result<int, Error>
 
-    let stmntToSquareFun stm = failwith "Not implemented"
+    let stmntToSquareFun stm (w:word) (pos:int) (acc:int) =
+        let state = mkState [("_pos_", pos); ("_acc_", acc); ("_result_", 0)] w ["_pos_"; "_acc_"; "_result_"]
+        stmntEval stm >>>= lookup "_result_" |> evalSM state
 
+    let arithSingleLetterScore = PV (V "_pos_") .+. (V "_acc_")
+    let arithDoubleLetterScore = ((N 2) .*. PV (V "_pos_")) .+. (V "_acc_")
+    let arithTripleLetterScore = ((N 3) .*. PV (V "_pos_")) .+. (V "_acc_")
+    let arithDoubleWordScore = N 2 .*. V "_acc_"
+    let arithTripleWordScore = N 3 .*. V "_acc_"
+    let stmntSingleLetterScore = Ass ("_result_", arithSingleLetterScore)
+    let stmntDoubleLetterScore = Ass ("_result_", arithDoubleLetterScore)
+    let stmntTripleLetterScore = Ass ("_result_", arithTripleLetterScore)
+    let stmntDoubleWordScore = Ass ("_result_", arithDoubleWordScore)
+    let stmntTripleWordScore = Ass ("_result_", arithTripleWordScore)
+    let singleLetterScore = stmntToSquareFun stmntSingleLetterScore
+    let doubleLetterScore = stmntToSquareFun stmntDoubleLetterScore
+    let tripleLetterScore = stmntToSquareFun stmntTripleLetterScore
+    let doubleWordScore = stmntToSquareFun stmntDoubleWordScore
+    let tripleWordScore = stmntToSquareFun stmntTripleWordScore
+
+    let containsNumbers =
+     stmntToSquareFun
+     (Seq (Declare "i",
+     (Seq (Ass ("_result_", V "_acc_"),
+     While (V "i" .<. WL,
+     ITE (IsDigit (CV (V "i")),
+     Seq (
+     Ass ("_result_", V "_result_" .*. N -1),
+     Ass ("i", WL)),
+     Ass ("i", V "i" .+. N 1)))))))
 
     type coord = int * int
 
-    type boardFun = coord -> Result<squareFun option, Error> 
-
-    let stmntToBoardFun stm m = failwith "Not implemented"
+    type boardFun = coord -> Result<squareFun option, Error>
+    let stmntToBoardFun stm (map:Map<int, 'a>) (coord:coord) =
+        let state = mkState [("_x_", fst coord); ("_y_", snd coord); ("_result_", 0)] [] ["_x_"; "_y_"; "_result_"]
+        stmntEval stm >>>= lookup "_result_" >>= (fun a -> ret (map.TryFind a)) |> evalSM state
 
     type board = {
         center        : coord
         defaultSquare : squareFun
         squares       : boardFun
     }
-
-    let mkBoard c defaultSq boardStmnt ids = failwith "Not implemented"
