@@ -26,7 +26,7 @@ Yes. We respect the timeout flag and return the current longest word that has be
 ### How to run
 cd into ScrabbleTemplate folder
 
-    cd ScrabbleTemplate
+    cd ScrabbleTemplate/ScrabbleTemplate
 
 run the program
 
