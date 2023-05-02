@@ -1,6 +1,8 @@
 ﻿namespace LowOrbitScrabbleCannon
 
+open Eval
 open Microsoft.VisualBasic
+open Parser
 open ScrabbleUtil
 open ScrabbleUtil.Dictionary
 open ScrabbleUtil.ServerCommunication
@@ -163,7 +165,7 @@ module Scrabble =
     | AddWord of string * (coord * (int * int))
     | Done
     let playGame cstream pieces (st : State.state) = 
-
+        
         let rec aux (st : State.state) (myTurn: bool) =
             let timeout = new System.Diagnostics.Stopwatch()
             timeout.Start()
@@ -178,32 +180,21 @@ module Scrabble =
                 if st.playedLetters.Count = 0 then
                     // First move
                     debugPrint("**** Playing the first word of the game ****\n")
-                    let stopWatch = System.Diagnostics.Stopwatch.StartNew()
 
                     // Find the longest word we can play on our hand
-                    let longestWord = MoveFinder.getLongestWordFirstMove (State.hand st) "" st.dict st.playedLetters (0,0) (1,0)
+                    let longestWord = MoveFinder.getLongestWordFirstMove (State.hand st) (State.board st) "" st.dict st.playedLetters (State.board st).center (1,0)
                     
                     debugPrint(sprintf "**** Playing word: %A ****\n" longestWord )
                     
-                    let move = Utility.wordToMove longestWord (0,0) (1, 0) (State.playedLetters st)
-                    send cstream (SMPlay move)
+                    if longestWord.Length > 0 then
+                        let move = Utility.wordToMove longestWord (State.board st).center (1, 0) (State.playedLetters st)
+                        send cstream (SMPlay move)
+                    else
+                        send cstream SMPass
                 else
                     // Continuing move
                     let mutable listOfWords : (string * (coord * (int * int))) list = List.empty<string * (coord * (int * int))>
                     let mutable continueWithBestWordFoundSoFar : bool = false;
-                    
-                    let timeKeeper = MailboxProcessor.Start(fun inbox ->
-                        let rec messageLoop () = async{
-                            let! (msg : CoordinatorMessage) = inbox.Receive()
-                            match msg with
-                            | Timeout time ->
-                                Thread.Sleep(int (time - (uint32 100)))
-                                // Timeout reached, set continue to true
-                                DebugPrint.debugPrint "\n\nDone sleeping\n\n"
-                                continueWithBestWordFoundSoFar <- true
-                            return! messageLoop ()
-                        }
-                        messageLoop ())
                     
                     let wordKeeper = MailboxProcessor.Start(fun inbox ->
                         let rec messageLoop () = async{
@@ -233,7 +224,6 @@ module Scrabble =
                                     // Get list of every word in the new state
                                     let everyWordOnTheBoardInStateWithInsertedMove = State.wordLookup stateWithInsertedMove.playedLetters
                                     
-                                    //TODO: We can skip all of this if the word is shorter than our longest word we've and validated found so far
                                     // Check to see if every word is in the dictionary. If they are not we do not consider the state valid                                                               
                                     let stateValid =
                                         List.fold (fun (stateValidity:bool) (key:string, _) ->
@@ -271,7 +261,7 @@ module Scrabble =
                     let listOfAllWordsWeCanPlay =
                         List.fold (fun (acc:list<string * (coord * (int * int))>) (key,value) ->
                             let (coord, dir) = value
-                            let longestWord = MoveFinder.getLongestWordContinuation (State.hand st) key (State.dict st) st.playedLetters coord dir
+                            let longestWord = MoveFinder.getLongestWordContinuation (State.hand st) (State.board st) key (State.dict st) st.playedLetters coord dir
                             if longestWord.Length > 0 then
                                 (longestWord, value)::acc
                             else
@@ -383,7 +373,8 @@ module Scrabble =
         //let dict = dictf true // Uncomment if using a gaddag for your dictionary
         let dict = dictf false // Uncomment if using a trie for your dictionary
         let board = Parser.mkBoard boardP
-                  
+        
+
         let handSet = List.fold (fun acc (x, k) -> MultiSet.add x k acc) MultiSet.empty hand
 
         fun () -> playGame cstream tiles (State.mkState board dict playerNumber numPlayers handSet playerTurn Map.empty timeout)

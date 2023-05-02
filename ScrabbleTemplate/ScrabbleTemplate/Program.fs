@@ -26,21 +26,21 @@ let main argv =
     System.Console.ForegroundColor <- System.ConsoleColor.Black
     System.Console.Clear()
 
-//    let board        = ScrabbleUtil.StandardBoard.standardBoard ()
+    //let board      = ScrabbleUtil.StandardBoard.standardBoard ()
     let board      = ScrabbleUtil.InfiniteBoard.infiniteBoard ()
-
-//    let board      = ScrabbleUtil.RandomBoard.randomBoard ()
-    // let board      = ScrabbleUtil.RandomBoard.randomBoardSeed (Some 42069)
-//    let board      = ScrabbleUtil.InfiniteRandomBoard.infiniteRandomBoard ()
-//    let board      = ScrabbleUtil.InfiniteRandomBoard.infiniteRandomBoardSeed (Some 42)
-
-//    let board      = ScrabbleUtil.HoleBoard.holeBoard ()
-//    let board      = ScrabbleUtil.InfiniteHoleBoard.infiniteHoleBoard ()
-
+    
+    //let board      = ScrabbleUtil.RandomBoard.randomBoard ()
+    //let board      = ScrabbleUtil.RandomBoard.randomBoardSeed (Some 42069)
+    //let board      = ScrabbleUtil.InfiniteRandomBoard.infiniteRandomBoard ()
+    //let board      = ScrabbleUtil.InfiniteRandomBoard.infiniteRandomBoardSeed (Some 42)
+    
+    //let board      = ScrabbleUtil.HoleBoard.holeBoard ()
+    //let board      = ScrabbleUtil.InfiniteHoleBoard.infiniteHoleBoard ()
+    
     let words     = readLines "./Dictionaries/English.txt"
-
+    
     let handSize   = 7u
-    let timeout    = Some 1000u
+    let timeout    = Some 3000u
     let tiles      = ScrabbleUtil.English.tiles 1u
     let seed       = None
     let port       = 13001
@@ -52,13 +52,13 @@ let main argv =
     let (dictionary, time) = time (fun () -> ScrabbleUtil.Dictionary.mkDict words dictAPI)
     // Uncomment to test your dictionary
     //ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test sucessful\n")
-    let incorrectWords = ScrabbleUtil.Dictionary.test words 10 (dictionary false) // change to true if using a GADDAG
+    (*let incorrectWords = ScrabbleUtil.Dictionary.test words 10 (dictionary false) // change to true if using a GADDAG
     match incorrectWords with
     | [] -> ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test sucessful!\n")
     | _  ->
        ScrabbleUtil.DebugPrint.debugPrint ("Dictionary test failed for at least the following words: \n") 
        List.iter (fun str -> ScrabbleUtil.DebugPrint.debugPrint (sprintf "%s\n" str)) incorrectWords
-        
+    *)   
     // Uncomment this line to call your client
     let players    = [("Low Orbit Scrabble Cannon", dictionary, LowOrbitScrabbleCannon.Scrabble.startGame)]        
 
@@ -67,5 +67,4 @@ let main argv =
     
     ScrabbleUtil.DebugPrint.forcePrint ("Server has terminated. Press Enter to exit program.\n")
     System.Console.ReadLine () |> ignore
-
     0

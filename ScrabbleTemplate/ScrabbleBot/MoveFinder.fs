@@ -1,12 +1,12 @@
 module internal MoveFinder
 
-    open System.Diagnostics
     open MultiSet
+    open Parser
     open ScrabbleUtil
     open Utility
     open ScrabbleUtil.Dictionary
 
-    let rec getLongestWordFirstMove (hand : MultiSet<uint32>) (accCurrentString : string) (dict : Dict) (playedLetters: Map<coord, (char * int)>) (coord:coord) (direction:(int * int)) =
+    let rec getLongestWordFirstMove (hand : MultiSet<uint32>) (board:board) (accCurrentString : string) (dict : Dict) (playedLetters: Map<coord, (char * int)>) (coord:coord) (direction:(int * int)) =
 
         // First determine what exists at the coordinate of the letter we are writing. If there is already a letter we must weave
         // This into the word we are writing rather than using letters from our hand
@@ -28,7 +28,7 @@ module internal MoveFinder
         List.fold (fun (longestWordSoFar:string) (lettersInLetterPiece:char list) ->
             // Fold over our world building blocks
             let newPotentialLongestWord =
-                List.fold (fun (longestWordSoFar:string) letter ->
+                List.fold (fun (wordContainsLetterOutsideBoard:bool,longestWordSoFar:string) letter ->
                     
                     // Get child node dictionary
                     let childNode = ScrabbleUtil.Dictionary.step letter dict
@@ -48,6 +48,14 @@ module internal MoveFinder
                                 // Removing single wildcard
                                 (accCurrentString + "?" + (string) letter)
                         
+                        // Figure out the coord based on the direction and last coord
+                        let newCoord = (fst(coord) + fst(direction), snd(coord) + snd(direction))
+                        
+                        let outsideBoard = board.squares newCoord |>
+                            (fun (StateMonad.Success sq) -> sq |>
+                                                           Option.map (fun _ -> false)) |> 
+                                                           Option.defaultValue true
+                                                           
                         // If the letter does not already exist on the board we remove it from our hand
                         let newHand = match existingLetter with
                         | Some _ -> hand
@@ -59,29 +67,36 @@ module internal MoveFinder
                                 (MultiSet.removeSingle (charToUint letter) hand)
                             else
                                 // Removing single wildcard
+                                //DebugPrint.debugPrint (sprintf "wildcard cord %A for word %A outside board: %A - " (fst(coord) + fst(direction), snd(coord) + snd(direction)) currentString outsideBoard)
                                 (MultiSet.removeSingle 0u hand)
                         
-                        // Figure out the coord based on the direction and last coord
-                        let newCoord = (fst(coord) + fst(direction), snd(coord) + snd(direction))
-                        
-                        // Recursively piece together all words
-                        let longestWordInBranches = getLongestWordFirstMove newHand currentString (nodeDict)  (playedLetters: Map<coord, (char * int)>) newCoord direction
+
+                        let longestWordInBranches = getLongestWordFirstMove newHand board currentString (nodeDict)  (playedLetters: Map<coord, (char * int)>) newCoord direction
                         
                         if currentStringIsWord && currentString.Length > longestWordInBranches.Length && currentString.Length > longestWordSoFar.Length then
-                            currentString
+                            if outsideBoard || wordContainsLetterOutsideBoard then
+                                (true, longestWordSoFar)
+                            else
+                                (false,currentString)
                         elif longestWordInBranches.Length > longestWordSoFar.Length then
-                            longestWordInBranches
+                            if outsideBoard || wordContainsLetterOutsideBoard then
+                                (true, longestWordSoFar)
+                            else
+                                (false,longestWordInBranches)
                         else
-                            longestWordSoFar
-                    | None _ -> longestWordSoFar
-                ) "" lettersInLetterPiece
-            if newPotentialLongestWord.Length > longestWordSoFar.Length then
-                newPotentialLongestWord
-            else
+                            (outsideBoard,longestWordSoFar)
+                    | None _ -> (false,longestWordSoFar)
+                ) (false,"") lettersInLetterPiece
+            if fst newPotentialLongestWord then // Word contains letters outside of board
                 longestWordSoFar
+            else
+                if (snd newPotentialLongestWord).Length > longestWordSoFar.Length then
+                    snd newPotentialLongestWord
+                else
+                    longestWordSoFar
         ) "" wordBuildingBlock
     
-    let getLongestWordContinuation (hand : MultiSet<uint32>) (accCurrentString: string) (dict: Dict) (playedLetters: Map<coord, (char * int)>) (coord:coord) (direction:(int * int))=
+    let getLongestWordContinuation (hand : MultiSet<uint32>) (board:board) (accCurrentString: string) (dict: Dict) (playedLetters: Map<coord, (char * int)>) (coord:coord) (direction:(int * int))=
         // Get dict from word so far
         let (wordLength, wordDictSoFar) =
             List.fold (fun (depth:int, dict:Dict) letter ->
@@ -90,5 +105,5 @@ module internal MoveFinder
                 | Some (_, nodeDict) ->
                     (depth + 1, nodeDict)
             ) (0,dict) (accCurrentString |> Seq.toList)
-        getLongestWordFirstMove hand accCurrentString wordDictSoFar playedLetters ((fst coord) + ((fst direction) * wordLength),(snd coord) + ((snd direction) * wordLength)) direction  
+        getLongestWordFirstMove hand board accCurrentString wordDictSoFar playedLetters ((fst coord) + ((fst direction) * wordLength),(snd coord) + ((snd direction) * wordLength)) direction  
     

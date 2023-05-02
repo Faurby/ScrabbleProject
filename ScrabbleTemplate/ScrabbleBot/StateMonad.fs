@@ -1,6 +1,4 @@
-﻿// Insert your StateMonad.fs from Assignment 6 here. All modules must be internal.
-
-module internal StateMonad
+﻿module StateMonad
 
     type Error = 
         | VarExists of string
@@ -78,6 +76,32 @@ module internal StateMonad
         S (fun s -> if pos >= s.word.Length || pos < 0 
                     then Failure (IndexOutOfBounds pos) 
                     else Success ((snd s.word.[pos]) , s))      
+    
+    let update (var : string) (value : int) : SM<unit> =
+        let rec aux (listBefore:List<Map<string, int>>) =
+            function
+            | []      -> None
+            | m :: ms -> 
+                match Map.tryFind var m with
+                | Some v -> 
+                    Some (listBefore@(Map.add var value m):: ms)
+                | None   -> aux (m::listBefore) ms
 
-    let declare (var : string) : SM<unit> = failwith "Not implemented"   
-    let update (var : string) (value : int) : SM<unit> = failwith "Not implemented"      
+        S (fun s -> 
+              match aux (List.empty<Map<string, int>>) (s.vars) with
+              | Some v -> Success ((), {s with vars = v})
+              | None   -> Failure (VarNotFound var)) 
+              
+    let declare (var : string) : SM<unit> =
+        let rec aux =
+            function
+            | []      -> None
+            | m :: ms -> Map.tryFind var m
+        S (fun s -> 
+                if (s.reserved.Contains(var)) then Failure (ReservedName var)
+                else
+                    match aux (s.vars) with
+                    | Some _ -> Failure (VarExists var)
+                    | None   -> Success ((), {s with vars = (Map.add var 0 (s.vars.Head)::s.vars.Tail)}))
+
+    
