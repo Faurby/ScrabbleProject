@@ -339,7 +339,7 @@ module Scrabble =
                 // Update the state
                 let newState = State.mkState (State.board st) (State.dict st) (State.playerNumber st) (State.numberOfPlayers st) newHand (State.playerTurn st) updatedStateLetters.playedLetters st.timeout
                 
-                aux newState false
+                aux newState (st.playerNumber % st.numberOfPlayers + 1u = st.playerNumber)
             | RCM (CMPlayed (pid, moves, points)) ->
                 (* Successful play by other player. Update your state *)
                 debugPrint (sprintf "============ CMPlayed ============\n")

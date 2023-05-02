@@ -20,7 +20,7 @@ let spawnMultiples name dict bot =
 
 [<EntryPoint>]
 let main argv =
-    ScrabbleUtil.DebugPrint.toggleDebugPrint true // Change to false to supress debug output
+    ScrabbleUtil.DebugPrint.toggleDebugPrint false // Change to false to supress debug output
 
     System.Console.BackgroundColor <- System.ConsoleColor.White
     System.Console.ForegroundColor <- System.ConsoleColor.Black
@@ -60,7 +60,7 @@ let main argv =
        List.iter (fun str -> ScrabbleUtil.DebugPrint.debugPrint (sprintf "%s\n" str)) incorrectWords
         
     // Uncomment this line to call your client
-    let players    = [("Low Orbit Scrabble Cannon", dictionary, LowOrbitScrabbleCannon.Scrabble.startGame);("wannabedarthwader", dictionary, LowOrbitScrabbleCannon.Scrabble.startGame)]        
+    let players    = [("Low Orbit Scrabble Cannon", dictionary, LowOrbitScrabbleCannon.Scrabble.startGame)]        
 
     do ScrabbleServer.Comm.startGame 
           board dictionary handSize timeout tiles seed port players
